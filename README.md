@@ -2,9 +2,6 @@
 
 [![FPGA](https://img.shields.io/badge/FPGA-Xilinx%20Artix--7-red.svg)](https://www.xilinx.com)
 [![Frequency](https://img.shields.io/badge/Frequency-80%20MHz-blue.svg)]()
-[![Timing](https://img.shields.io/badge/Timing-MET%20%2B1.886ns-brightgreen.svg)]()
-[![Throughput](https://img.shields.io/badge/Throughput-721%20FPS-orange.svg)]()
-[![Power](https://img.shields.io/badge/Power-165mW-yellow.svg)]()
 [![Language](https://img.shields.io/badge/Language-Verilog-lightgrey.svg)]()
 
 ## 📋 Overview
@@ -268,67 +265,6 @@ stateDiagram-v2
     end note
 ```
 
-```mermaid
-stateDiagram-v2
-    direction LR
-
-    %% =========================================================================
-    %%  STYLING (Matches Main FSM Scheme)
-    %% =========================================================================
-    classDef idle fill:#ECEFF1,stroke:#546E7A,stroke-width:2px,color:#37474F,rx:10,ry:10;
-    classDef logic fill:#FFF3E0,stroke:#EF6C00,stroke-width:2px,stroke-dasharray: 5 5,color:#E65100,rx:5,ry:5;
-    classDef process fill:#E3F2FD,stroke:#1565C0,stroke-width:2px,color:#0D47A1,rx:5,ry:5;
-    classDef done fill:#E8F5E9,stroke:#2E7D32,stroke-width:2px,color:#1B5E20,rx:5,ry:5;
-
-    %% =========================================================================
-    %%  STATES
-    %% =========================================================================
-    [*] --> IDLE
-    state "IDLE STATE" as IDLE:::idle
-    state "RESET ACC" as CLEAR:::logic
-    state "LOAD FIRST OP" as LOAD:::process
-    state "SERIAL ACCUMULATE" as BUSY:::process
-    state "OUTPUT VALID" as DONE:::done
-
-    %% =========================================================================
-    %%  TRANSITIONS
-    %% =========================================================================
-    IDLE --> CLEAR : Start Signal
-    IDLE --> IDLE : Wait
-
-    CLEAR --> LOAD : Acc = 0
-
-    LOAD --> BUSY : Index = 0
-
-    %% The main loop
-    BUSY --> BUSY : Index < 8 (Accumulate)
-    BUSY --> DONE : Index == 8 (Complete)
-
-    DONE --> IDLE : Latch Result
-
-    %% =========================================================================
-    %%  NOTES
-    %% =========================================================================
-    note bottom of CLEAR
-        <b>Initialization</b>
-        Clears accumulator register
-        Resets index counter
-    end note
-
-    note top of BUSY
-        <b>Processing Loop</b>
-        Iterates 8 times
-        <i>Acc = Acc + (Pixel × Weight)</i>
-    end note
-
-    note bottom of DONE
-        <b>Completion</b>
-        Asserts done signal
-        Holds result valid
-    end note
-
-```
-
 **Convolution Timing:**
 
 - **Latency:** 11 cycles (1 CLEAR + 1 LOAD + 8 BUSY + 1 DONE)
@@ -415,18 +351,15 @@ Input Stream → [Line Buffer 0 (28 pixels)] ─┐
 - **Warm-up:** First valid window appears after 28×2 + 3 = 59 pixels
 - **Throughput:** 1 valid window per pixel (after warm-up)
 
-**Implementation Insight:**
-The module uses a clever prediction technique where outputs (`w0-w8`) represent the window state _after_ the internal shift occurs, eliminating a cycle of latency.
-
 ---
 
 #### 4. **conv3x3_serial**
 
 Serial multiply-accumulate (MAC) unit for 3×3 convolution.
 
-**MAC Datapath:**
+**Datapath:**
 
-```
+<!-- ```
 Input Mux                MAC Core                Result Latch
 ┌─────────┐             ┌──────────┐             ┌──────────┐
 │ a[0..8] │───[idx]────▶│ a × b    │───+───────▶│   acc    │
@@ -434,13 +367,66 @@ Input Mux                MAC Core                Result Latch
 └─────────┘             └──────────┘   │               │
                              ▲          │               │
                              └──────────┘───[accumulate]
+``` -->
+
+```mermaid
+graph LR
+    %% =========================================================================
+    %%  STYLING
+    %% =========================================================================
+    classDef regs fill:#1F5FE,stroke:#0277BD,stroke-width:2px
+    classDef mux fill:#FF3E0,stroke:#EF6C00,stroke-width:2px
+    classDef core fill:#8F5E9,stroke:#2E7D32,stroke-width:2px
+
+    %% =========================================================================
+    %%  NODES
+    %% =========================================================================
+
+    subgraph INPUTS [Parallel Inputs]
+        P_REG[Pixel Registers<br/>a0...a8]:::regs
+        W_REG[Weight Registers<br/>w0...w8]:::regs
+    end
+
+    subgraph SELECTION [Serial Selection]
+        IDX((Index<br/>Counter)):::mux
+        MUX_A[9:1 Mux<br/>Select Pixel]:::mux
+        MUX_B[9:1 Mux<br/>Select Weight]:::mux
+    end
+
+    subgraph MAC [MAC Core]
+        MULT((Multiplier)):::core
+        ADD((Adder)):::core
+        ACC[Accumulator<br/>Reg]:::core
+    end
+
+    OUT([Result]):::core
+
+    %% =========================================================================
+    %%  WIRES
+    %% =========================================================================
+
+    P_REG --> MUX_A
+    W_REG --> MUX_B
+
+    IDX -.->|Select| MUX_A
+    IDX -.->|Select| MUX_B
+
+    MUX_A -->|a_sel| MULT
+    MUX_B -->|b_sel| MULT
+
+    MULT -->|Product| ADD
+    ADD -->|Sum| ACC
+    ACC -->|Feedback| ADD
+
+    ACC --> OUT
+
 ```
 
-**Performance:**
+<!-- **Performance:**
 
 - **Resource:** 1 multiplier (inferred DSP or LUT-based)
 - **Latency:** 11 cycles per 3×3 window
-- **Data Width:** 8×8 multiply → 32-bit accumulator
+- **Data Width:** 8×8 multiply → 32-bit accumulator -->
 
 **Index Mapping:**
 
@@ -519,10 +505,10 @@ For each filter (0-7):
 - **WAIT_2 / FETCH_3:** Pipeline stage for val2
 - **WAIT_3 / COMPARE:** Read val3, compute max, output result
 
-**Latency:**
+<!-- **Latency:**
 
 - **Per Pool Window:** 8 cycles (fetch pipeline + compare)
-- **Total:** 8 filters × 13×13 windows × 8 cycles = **10,816 cycles**
+- **Total:** 8 filters × 13×13 windows × 8 cycles = **10,816 cycles** -->
 
 **Output:**
 
@@ -611,8 +597,7 @@ Infers 8×RAMB36 blocks for feature map storage.
 ### Synthesis Results
 
 **Target Device:** Xilinx Artix-7 XC7A200T-1 (Speed Grade -1)  
-**Tool Version:** Vivado 2025.1  
-**Date:** February 11, 2026
+**Tool Version:** Vivado 2025.1
 
 #### Resource Utilization
 
@@ -625,15 +610,6 @@ Infers 8×RAMB36 blocks for feature map storage.
 | **DSP48E1**        | 0    | 740       | **0%**      | Multipliers inferred as LUTs |
 | **CARRY4**         | 77   | 33,650    | 0.23%       | Address arithmetic           |
 | **BUFG**           | 1    | 32        | 3.13%       | Global clock                 |
-
-**Total Slice Registers Breakdown:**
-
-- Sliding window buffers: ~543 FFs
-- Pooling unit: ~155 FFs
-- Convolution: ~74 FFs
-- Address generator: ~36 FFs
-- Weight ROM: ~60 FFs
-- Other: ~16 FFs
 
 #### Hierarchical Utilization
 
@@ -669,20 +645,11 @@ Infers 8×RAMB36 blocks for feature map storage.
 - **Slack Margin:** +15.1% above target period
 - **Bottleneck:** Address generation arithmetic (multiply + add) feeding into MAC accumulator
 
-**Timing Quality:**
-
-- All 2511 endpoints meet setup requirements
-- No timing violations in any corner (slow/fast)
-- Conservative design allows for:
-  - Temperature variation (0-85°C commercial range)
-  - Voltage variation (±5%)
-  - Process corners covered
-
 ---
 
 ### Power Consumption
 
-**Analysis Method:** Post-route power estimation (Low confidence - no activity data)
+**Analysis Method:** Post-route power estimation
 
 | Power Domain      | Dynamic (W) | Static (W) | Total (W) | Percentage |
 | ----------------- | ----------- | ---------- | --------- | ---------- |
@@ -768,7 +735,7 @@ A **PyTorch-based golden model** (`Golden_model.ipynb`) generates reference outp
 
 **Workflow:**
 
-1. Train a simple CNN on MNIST (1 epoch for demo purposes)
+1. Train a simple CNN on MNIST
 2. Quantize weights to 8-bit integers (`INT8 = round(weight × 230.18)`)
 3. Export:
    - `image_data.txt`: 28×28 input pixels (signed 8-bit)
@@ -782,7 +749,7 @@ A **PyTorch-based golden model** (`Golden_model.ipynb`) generates reference outp
 **Features:**
 
 - **Flow Control:** Implements AXI-Stream-like backpressure with `axis_ready`
-- **Golden Comparison:** Loads expected outputs and compares cycle-by-cycle
+
 - **Performance Measurement:** Timestamps start/done to measure latency
 - **Output Capture:** Writes hardware results to `hardware_output.txt`
 
@@ -810,12 +777,12 @@ A **PyTorch-based golden model** (`Golden_model.ipynb`) generates reference outp
 
    ```bash
    jupyter notebook Golden_model.ipynb
-   # Run all cells → generates export/ folder
+   # Run First cell → generates export/ folder
    ```
 
-2. **Run RTL Simulation:**
+2. **Run RTL Simulation in VIVADO:**
 
-   ```tcl
+   <!-- ```tcl
    # In Vivado TCL console
    create_project cnn_accel ./cnn_accel -part xc7a200tfbg676-1
    add_files -fileset sources_1 {*.v}
@@ -823,13 +790,14 @@ A **PyTorch-based golden model** (`Golden_model.ipynb`) generates reference outp
    set_property top tb_cnn_export_1 [get_filesets sim_1]
    launch_simulation
    run 2ms
-   ```
+   ``` -->
 
 3. **Verify Results:**
    ```bash
    python verify_outputs.py  # Compare hardware vs. golden
    ```
 
+<!--
 ### Synthesis & Implementation
 
 ```tcl
@@ -864,10 +832,11 @@ report_power -file reports/power.txt
 3. Connect:
    - Clock input (80 MHz)
    - Pixel stream source (e.g., camera, memory)
-   - Result capture logic
+   - Result capture logic -->
 
 ---
 
+<!--
 ## 📊 Comparison with State-of-the-Art
 
 | Metric                | This Work  | Typical FPGA CNN | Notes                          |
@@ -889,9 +858,52 @@ report_power -file reports/power.txt
 
 - Lower throughput vs. parallel implementations
 - Not suitable for high-resolution images without tiling
-- Fixed architecture (28×28 input, 3×3 kernels)
+- Fixed architecture (28×28 input, 3×3 kernels) -->
+
+## 📊 Implementation Results
+
+The design was synthesized and implemented on a **Xilinx Artix-7 (XC7A200T)** FPGA. Below are the verified results.
+
+### 1. RTL Schematic & Architecture
+
+The generated schematic confirms the modular design, clearly showing the separation between the **Control Plane** (Main FSM, Address Generator) and the **Datapath** (Sliding Window, Convolution Core, Max Pooling).
+
+![RTL Top Level Schematic](./Docs/RTL_Schematic.png)
 
 ---
+
+### 2. Behavioral Simulation
+
+The waveform demonstrates the correctly pipelined execution. `filter_cnt` (Bottom Row) cycles `0-7` for every valid window, and `axis_ready` asserts backpressure correctly.
+
+![Vivado Simulation Waveform](./Docs/RTL_Sim.png)
+
+---
+
+### 3. Bit-Accuracy Verification (Golden Model)
+
+Hardware outputs were compared against the PyTorch Golden Model using the `verify_cnn.py` script.
+
+- **Total Data Points:** 1352 values (13x13 feature maps × 8 filters).
+- **Result:** **100% Match** (0 Mismatches).
+- **MSE:** 0.0000.
+
+![Python Verification Script Output](./Docs/Verification_Output.png)
+_Fig 3. Terminal output showing perfect correlation between Hardware (Verilog) and Software (PyTorch)._
+
+---
+
+### 4. Timing & Power Analysis
+
+The design successfully met all constraints at **80 MHz** with significant positive slack.
+
+#### Timing Summary
+
+![Timing Summary Report](./Docs/Timing_summary.png)
+
+#### Power Estimation
+
+![Power Report](./Docs/Power_Report.png)
 
 ## 🛠️ Optimization Opportunities
 
@@ -908,18 +920,6 @@ report_power -file reports/power.txt
 **Proposed:** Pipeline stages overlap  
 **Speedup:** 1.5-2× throughput  
 **Complexity:** More complex FSM, multi-port BRAM
-
-### 3. **Weight Reuse Optimization**
-
-**Current:** Weights loaded from ROM every filter  
-**Proposed:** Cache last-used filter weights  
-**Benefit:** Reduce ROM access power by ~40%
-
-### 4. **Dynamic Voltage/Frequency Scaling**
-
-**Current:** Fixed 80 MHz  
-**Proposed:** Adaptive clock (20-80 MHz based on workload)  
-**Benefit:** 30-50% power reduction in low-throughput scenarios
 
 ### 5. **Support for Larger Images**
 
@@ -938,48 +938,3 @@ report_power -file reports/power.txt
 5. **No Configurable Stride:** Convolution stride is fixed at 1
 
 ---
-
-## 📚 References
-
-- **Paper:** [A Compact CNN Accelerator for Edge Devices](not_published)
-- **Dataset:** MNIST (Yann LeCun, 1998)
-- **Tool:** Xilinx Vivado Design Suite
-- **Framework:** PyTorch 1.x for golden model
-
----
-
-## 👤 Author
-
-**[Your Name]**  
-_Hardware Engineer | FPGA Specialist | AI Accelerator Designer_
-
-- 📧 Email: your.email@example.com
-- 🔗 LinkedIn: [linkedin.com/in/yourprofile](https://linkedin.com/in/yourprofile)
-- 🌐 Portfolio: [yourwebsite.com](https://yourwebsite.com)
-
----
-
-## 📄 License
-
-This project is licensed under the **MIT License** - see [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- Xilinx for Vivado Design Tools
-- PyTorch community for neural network framework
-- MNIST dataset creators
-
----
-
-## 🔗 Related Projects
-
-- [FPGA DSP Library](https://github.com/your-repo/fpga-dsp)
-- [Hardware ML Accelerators](https://github.com/your-repo/hw-ml)
-
----
-
-<p align="center">
-  <i>Built with ❤️ for efficient edge AI computing</i>
-</p>
