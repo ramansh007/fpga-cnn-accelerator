@@ -929,7 +929,7 @@ The design successfully met all constraints at **80 MHz** with significant posit
 
 ---
 
-## 🐛 Known Issues & Limitations
+<!-- ## 🐛 Known Issues & Limitations
 
 1. **Fixed Input Size:** Hardcoded for 28×28 images only
 2. **Single-Channel Input:** Grayscale only (no RGB support)
@@ -937,4 +937,4 @@ The design successfully met all constraints at **80 MHz** with significant posit
 4. **Pooling Latency:** 2×2 pooling takes 8 cycles (could be 4 with better FSM)
 5. **No Configurable Stride:** Convolution stride is fixed at 1
 
----
+--- -->
